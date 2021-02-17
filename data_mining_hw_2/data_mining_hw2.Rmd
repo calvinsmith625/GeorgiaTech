@@ -1,0 +1,232 @@
+---
+title: "Data Mining HW2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(data.table)
+fat <- fread('https://raw.githubusercontent.com/calvinsmith625/GeorgiaTech/main/fat.csv')
+```
+
+# {.tabset .tabset-pills}
+
+**Please us the tabs below to navigate between the appendix and the report.**
+
+## Appendix
+
+```{r}
+n = dim(fat)[1]
+n1 = round(n/10)
+flag = sort(sample(1:n, n1))
+train <- fat[-flag]
+test <- fat[flag]
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=TRUE}
+vars_age <- train %>%
+  ggplot(aes(x=age)) +
+  geom_smooth(aes(y=scale(brozek), colour='Brozek'), se=FALSE) +
+  geom_smooth(aes(y=scale(weight), colour='Weight'), se=FALSE) +
+  geom_smooth(aes(y=scale(thigh), colour='Thighs'), se=FALSE) +
+  geom_smooth(aes(y=scale(density), colour='Density'), se=FALSE) +
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = 12, face='bold'),
+    axis.text = element_text(size = 10),
+    plot.title = element_text(size = 18, hjust = 0.5, face='bold'),
+    plot.subtitle = element_text(size = 14, hjust = 0.5),
+    plot.caption = element_text(size = 12),
+    axis.line = element_blank(),
+    plot.background = element_rect(fill = 'gray97'),
+    panel.background = element_rect(fill = 'gray97'),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = 'top',
+    legend.background = element_rect(fill = 'gray97')
+  ) +
+  labs(x='Age', y='Scaled Amount',
+       title = 'Variables by Age',
+       colour='') +
+  scale_color_manual(values = c('forestgreen', 'red', 'dodgerblue', 'gold2'))
+```
+
+```{r, message=FALSE, warning=FALSE, include=TRUE}
+# install.packages('gt')
+library(gt)
+train_sds <- train %>%
+  summarise_all(funs(sd(., na.rm = TRUE)))
+train_means <- train %>%
+  summarise_all(funs(mean(., na.rm = TRUE)))
+tbl <- cbind.data.frame(VARIABLE = colnames(train),
+                 MEAN = round(as.numeric(c(train_means[1,])),2),
+                 `STANDARD DEVIATION` = round(as.numeric(c(train_sds[1,])),2)) %>%
+  gt() %>%
+  tab_header(
+    title = "Summary Statistics of All Variables"
+  ) %>%
+  data_color(
+    columns = vars(MEAN, `STANDARD DEVIATION`),
+    colors = scales::col_numeric(
+      palette = c("#F8F8F8","#30a2da"),
+      domain = NULL
+      )
+    )
+```
+
+```{r, echo=TRUE, include=TRUE}
+init_lin_mod <- lm(brozek ~ ., data = train)
+init_lin_mod_k5 <- lm(brozek ~ siri + density + thigh + knee + forearm, data = train)
+library(glmnet)
+# cross-validated ridge regression
+init_train_mm <- model.matrix(brozek ~ ., train)[, -1]
+init_test_mm <- model.matrix(brozek ~ ., test)[, -1]
+init_ridge <- cv.glmnet(
+  x = init_train_mm,
+  y = train$brozek,
+  alpha = 0
+)
+# cross-validated lasso
+init_lasso <- cv.glmnet(
+  x = init_train_mm,
+  y = train$brozek,
+  alpha = 1
+)
+library(pls)
+init_pcr_model <- pcr(brozek ~ ., data = train, scale = TRUE, validation = "CV")
+library(caret)
+init_pls <- train(
+  brozek ~ ., data = train, method = "pls",
+  scale = TRUE,
+  trControl = trainControl("cv", number = 5),
+  tuneLength = 10
+  )
+```
+
+```{r}
+init_lm_preds <- predict(init_lin_mod, test)
+paste0('Linear Model (all predictors) Error = ', round(mean((test$brozek - init_lm_preds)^2),3))
+init_lmk5_preds <- predict(init_lin_mod_k5, test)
+paste0('Linear Model (k = 5) Error = ', round(mean((test$brozek - init_lmk5_preds)^2),3))
+init_ridge_preds <- predict(init_ridge, s = init_ridge$lambda.min, init_test_mm)
+paste0('Ridge Error = ', round(mean((test$brozek - init_ridge_preds)^2),3))
+init_lasso_preds <- predict(init_lasso, s = init_lasso$lambda.min, init_test_mm)
+paste0('LASSO Error = ', round(mean((test$brozek - init_lasso_preds)^2),3))
+init_pcr_preds <- predict(init_pcr_model, test)
+paste0('Principal Components Error = ', round(mean((test$brozek - init_pcr_preds)^2),3))
+init_pls_preds <- predict(init_pls, test)
+paste0('Partial Least Squares Error = ', round(mean((test$brozek - init_pls_preds)^2),3))
+```
+
+```{r, echo=TRUE, include=TRUE}
+monte_carlo_cv <- function(dat){
+  # sample rows
+  n = dim(dat)[1]
+  n1 = round(n/10)
+  inds <- sort(sample(1:n, n1))
+  temp_train <- dat[inds,]
+  temp_test <- dat[-inds,]
+  # train models to ensure no training bias in testing
+  lin_mod <- lm(brozek ~ ., data = temp_train)
+  lin_mod_preds <- predict(lin_mod, temp_test)
+  lin_mod_error <- round(mean((temp_test$brozek - lin_mod_preds)^2),4)
+  ###
+  lin_mod_k5 <- lm(brozek ~ siri + density + thigh + knee + forearm, data = temp_train)
+  lin_modk5_preds <- predict(lin_mod_k5, temp_test)
+  lin_modk5_error <- round(mean((temp_test$brozek - lin_modk5_preds)^2),4)
+  ###
+  train_mm <- model.matrix(brozek ~ ., temp_train)[, -1]
+  test_mm <- model.matrix(brozek ~ ., temp_test)[, -1]
+  ridge <- cv.glmnet(
+    x = train_mm,
+    y = temp_train$brozek,
+    alpha = 0)
+  ridge_preds <- predict(ridge, s = ridge$lambda.min, test_mm)
+  ridge_error <- round(mean((temp_test$brozek - ridge_preds)^2),4)
+  ###
+  lasso <- cv.glmnet(
+    x = train_mm,
+    y = temp_train$brozek,
+    alpha = 1)
+  lasso_preds <- predict(lasso, s = lasso$lambda.min, test_mm)
+  lasso_error <- round(mean((temp_test$brozek - lasso_preds)^2),4)
+  ###
+  pcr_model <- pcr(brozek ~ ., data = temp_train, scale = TRUE, validation = "CV")
+  pcr_preds <- predict(pcr_model, temp_test)
+  pcr_error <- round(mean((temp_test$brozek - pcr_preds)^2),4)
+  ###
+  pls <- train(
+    brozek ~ ., data = temp_train, method = "pls",
+    scale = TRUE,
+    trControl = trainControl("cv", number = 5),
+    tuneLength = 10
+    )
+  pls_preds <- predict(pls, temp_test)
+  pls_error <- round(mean((temp_test$brozek - pls_preds)^2),4)
+  
+  final_df <- cbind.data.frame(lin_mod_error, lin_modk5_error, ridge_error, lasso_error, pcr_error, pls_error)
+  return(final_df)
+}
+```
+
+```{r,include=TRUE, echo=TRUE}
+final_mc_cv <- replicate(100, monte_carlo_cv(fat), F)
+final_mc_cv <- bind_rows(final_mc_cv)
+```
+
+## Report
+
+### Introduction
+
+For this homework assignment I'll be exploring the predictability of a person's body fat percentage (as measured by Brozek's equation). I'll implement multiple forms of linear regression and regularized regression to predict the Brozek score. The predictors in the data are variables related to a person's physique like weight, height, etc. and how old a person is.
+
+### Exploratory Data Analysis
+
+Below you can see a few variables as age increases for men. There appears to be a significant relationship between Brozek score and a man's age. I found it interesting how there doesn't seem to be a relationship between weight and age, but thigh size and body density decrease over time.
+
+```{r}
+vars_age
+```
+
+Notice how density and brozek score appear nearly perfectly inversely correlated. The correlation coefficient between these two variables is `r round(cor(train$brozek, train$density),3)`.
+
+Below you'll find the mean and standard deviation of each variable in our data.
+
+```{r}
+tbl
+```
+
+### Methods
+
+I built my simple linear models using the lm() function. For my linear model with 5 variables I chose the "best subset of k=5 predictors" based on the p-values returned from the linear model with all predictors. For both cases of regularized regression I used the glmnet package and specified ridge regression by setting my alpha=0 and lasso by setting my alpha=1. For principal component regression I used the pls package to scale and compute the model. For partial least squares I used the train() function available in caret and set my method to run partial least squares.
+
+To build a Monte-Carlo validation I wrote a function to train each of the specified models on a new train and test set. I repeated this function 100 times and returned the error rate of each model's predictions on the testing data.
+
+### Results
+
+Below is each model's testing error without Monte-Carlo validation.
+
+```{r}
+paste0('Linear Model (all predictors) Error = ', round(mean((test$brozek - init_lm_preds)^2),3))
+paste0('Linear Model (k = 5) Error = ', round(mean((test$brozek - init_lmk5_preds)^2),3))
+paste0('Ridge Error = ', round(mean((test$brozek - init_ridge_preds)^2),3))
+paste0('LASSO Error = ', round(mean((test$brozek - init_lasso_preds)^2),3))
+paste0('Principal Components Error = ', round(mean((test$brozek - init_pcr_preds)^2),3))
+paste0('Partial Least Squares Error = ', round(mean((test$brozek - init_pls_preds)^2),3))
+```
+
+Below is the average error of each model after Monte-Carlo validation.
+
+```{r}
+colMeans(final_mc_cv)
+```
+
+### Findings
+
+As shown above the lasso model performs best with the linear model with the top 5 p-values from the full linear regression extracted performing second best. In this instance principal compenent regression performs very poorly.
