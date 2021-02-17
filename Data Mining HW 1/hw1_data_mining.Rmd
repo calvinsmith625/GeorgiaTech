@@ -1,0 +1,147 @@
+---
+title: "hw1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressMessages(library(tidyverse))
+train <- read.table('https://raw.githubusercontent.com/calvinsmith625/GeorgiaTech/main/Data%20Mining%20HW%201/train.csv',
+                    sep = ",")
+train <- subset(train, train[,1] == 2 | train[,1] == 7)
+```
+
+**Exploratory Data Analysis**
+
+```{r}
+paste(round(sum(train$V1 == 2) / nrow(train), 2) * 100, "% of the response variable are 2's while the rest are 7's.", sep = '')
+```
+
+In classification it's important to determine how unevenly our response variable is. If there's not a balance between 2's and 7's we'd be more likely to cite Precision and Recall in reporting accuracy, compared to Sensitivity and Specficity. But, this data is fairly evenly split. The training data has 1,376 observations, and we'll have 345 rows to test on.
+
+Below is a visualization of the 100th row on this dataset, which forms a 7.
+
+```{r}
+rowind <- 100
+# the dimensions are 16x16 i.e. 257 vairables minus the response = 256 ... sqrt(256) = 16
+Xval <- t(matrix(data.matrix(train[,-1])[rowind,], # remove column 1 and obtain desired row
+                 byrow = TRUE, 16, 16)[16:1,])
+image(Xval, col = gray(0:1), axes=F)
+```
+
+```{r}
+linear_model <- lm(V1 ~ ., data = train)
+summary(linear_model)$r.squared
+```
+
+This model accounts for 94% of the variance. Based only on R-Sqaured and P-Values you'd assume this linear regression will classify well.
+
+```{r}
+pred_train <- predict.lm(linear_model, train[,-1])
+range(pred_train)
+```
+
+Notice how the range of the values predicted from this linear model are not physcially possible given we're only using 2's and 7's. This model is predicting outcomes that don't exist in our data.
+
+
+```{r}
+y1_pred <- 2 + 5*(pred_train >= 4.5)
+paste('Linear model training error rate: ', mean(y1_pred != train$V1), ' after adjusting the outcomes to be possible for our scenario.',
+      sep = '')
+```
+
+```{r}
+#install.packages("class")
+library(class)
+num_k <- c(1,3,5,7,9,11,13,15)
+run_knn <- function(num_neighbors){
+  knn_model <- knn(train = train[,-1], test = train[,-1], cl = train[,1], k = num_neighbors)
+  accuracy <- round(mean(knn_model != train[,1]), 4)
+  return(paste("The training error of k = ", num_neighbors, " is ", accuracy, "%.", sep = ''))
+}
+purrr::map(num_k, run_knn)
+```
+
+```{r}
+test <- read.table('https://raw.githubusercontent.com/calvinsmith625/GeorgiaTech/main/Data%20Mining%20HW%201/test.csv',
+                   sep = ',')
+test <- subset(test, test[,1] == 2 | test[,1] == 7)
+test_preds <- predict.lm(linear_model, test[,-1])
+y1_pred_test <- 2 + 5*(test_preds >= 4.5)
+paste('The testing error rate is ', round(mean(y1_pred_test != test$V1),3),
+      ', after adjusting the predicted values to possible results for our scenario.', sep = '')
+```
+
+```{r}
+run_knn_test <- function(num_neighbors){
+  knn_model <- knn(train = train[,-1], test = test[,-1], cl = train[,1], k = num_neighbors)
+  accuracy <- round(mean(knn_model != test[,1]), 4)
+  return(paste("The tesing error of k = ", num_neighbors, " is ", accuracy, sep = ''))
+}
+print('Below are the error rates of each k value.')
+purrr::map(num_k, run_knn_test)
+```
+
+**Cross-Validation**
+
+```{r}
+full_data <- rbind(train, test)
+train_size = nrow(train)
+test_size = nrow(test)
+sample_size = nrow(full_data)
+set.seed(123)
+```
+
+```{r}
+mc_knn <- function(num_neighbors, train_dat, test_dat){
+  knn_model <- knn(train = train_dat[,-1], test = test_dat[,-1], cl = train_dat[,1], k = num_neighbors)
+  accuracy <- round(mean(knn_model != test_dat[,1]), 4)
+  return(accuracy)
+}
+```
+
+
+```{r}
+monte_carlo_cv <- function(k_neighbors){
+  # sample rows
+  inds <- sort(sample(1:sample_size, train_size))
+  temp_train <- full_data[inds,]
+  temp_test <- full_data[-inds,]
+  # train linear classifier
+  temp_lm <- lm(V1 ~ ., data = temp_train)
+  temp_lm_preds <- predict.lm(temp_lm, temp_test[,-1])
+  temp_lm_preds <- 2 + 5*(test_preds >= 4.5)
+  lm_err <- mean(temp_lm_preds != temp_test$V1)
+  # apply each value of k to the new data
+  knn_accs <- sapply(k_neighbors, mc_knn, train_dat = temp_train, test_dat = temp_test)
+  final_df <- cbind.data.frame(c(lm_err), rbind.data.frame(knn_accs))
+  colnames(final_df) <- c('lm_err', 'k_1', 'k_3', 'k_5', 'k_7', 'k_9', 'k_11', 'k_13', 'k_15')
+  return(final_df)
+}
+```
+
+```{r}
+final_mc_cv <- replicate(100, monte_carlo_cv(num_k), F)
+final_mc_cv <- bind_rows(final_mc_cv)
+print('For validation of my process, observe how each iteration returned a different result.')
+head(final_mc_cv)
+```
+
+```{r}
+avgs <- sapply(final_mc_cv, mean)
+print('The average testing error rate of each k value:')
+sort(avgs)
+```
+
+```{r}
+options(scipen = 5)
+vars <- sapply(final_mc_cv, var)
+print('The variance of testing error rates:')
+sort(vars)
+```
+
+In my approach to Monte-Carlo CV we see the lower k-values offer the lowest error rates, and the lowest variances. My method was not based on a for-loop. Rather, I built a function to take each k-value in as arguments then applied each k-value to the re-sampled data frames and built a linear model within it. I replicated this function 100 times and bound each row returned together. The linear model is very clearly the worst approach. This makes sense as linear regression is not a classification algorithm and this is a classification problem. It seems using either k = 1 or k = 3 is the best approach as it results in the lowest error and the lowest variance in error rates.
+
