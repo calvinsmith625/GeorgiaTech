@@ -1,0 +1,511 @@
+---
+title: "Homework 3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r}
+library(tidyverse)
+set.seed(123)
+options(scipen = 3)
+gt_logo <- 'https://upload.wikimedia.org/wikipedia/commons/c/c6/Georgia_Tech_logo.svg'
+gt_crest <- 'https://upload.wikimedia.org/wikipedia/commons/6/6c/Georgia_Tech_seal.svg'
+dat <- read.csv('/Users/Calvin/Downloads/Auto.csv')
+dat <- dat %>%
+  mutate(
+    mpg01 = ifelse(mpg > median(dat$mpg), 1, 0)
+  )
+dat <- subset(dat, select = -c(mpg))
+```
+
+# {.tabset .tabset-pills}
+
+## Report
+
+**Please click between the tabs above to toggle between the report and appendix.**
+
+### Introduction
+
+For homework three we are looking at data relating to the fuel efficiency of automobiles. Our data includes variables such as a vehicle's horsepower, weight, displacement, acceleration capability, origin, the year it was made, and the number of cylinders.The dataset has 392 variables after removing missing data.  We're looking to predict a vehicle's fuel efficiency. Opposed to predicting the amount of miles per gallon (mpg) a vehicle generates we'll view this as a classification problem by creating a binary variable which indicates whether or not the vehicle has an above-median mpg or below-median mpg. Therefore, we'll predict this binary variable.
+
+### Exploratory Data Analysis
+
+Not all variables in the data are numeric, and the cylidners variable has a very limited range of numbers which is not suitable for a density plot. Below we see the distribution of some of the key numeric variables. 
+
+Each of these variables are skewed to the right. They appear to form a distribution very similar to some form of an f-distribution. This will make linear predictions more difficult for these variables.
+
+```{r}
+dat %>% 
+  dplyr::select(displacement, horsepower, weight) %>% 
+  gather(metric, value) %>% 
+  ggplot(aes(value, fill = metric, col=metric)) + 
+  geom_density(show.legend = FALSE, alpha=.7) +
+  theme_light() +
+  labs(x='', y='Density') +
+  scale_color_manual(values = c('#B3A369', '#003057', '#545454')) +
+  scale_fill_manual(values = c('#B3A369', '#003057', '#545454')) +
+  theme(strip.background = element_rect(fill = '#003057')) +
+  facet_wrap(~ metric, scales = "free")
+```
+
+```{r, include=FALSE}
+hp_or_model <- glm(mpg01 ~ as.factor(origin) + horsepower, data = dat, family = 'binomial')
+summary(hp_or_model)
+```
+
+
+Here we compare horsepower and vehicle origin to the above or below median variable where 1 = above median and 0 = below median. Both of these variables prove to have a 'statistically significant' effect on mpg01 with p-values well below the standard .05 threshold.
+
+It certainly appears that vehicles with a higher horsepower lead to more below-median miles per gallon.
+
+```{r}
+dat %>%
+  ggplot(aes(x=as.factor(origin), y=horsepower, fill=as.factor(mpg01), col=as.factor(mpg01))) +
+  geom_boxplot(alpha=.6) +
+  theme_light() +
+  scale_fill_manual(values = c('#B3A369', '#003057')) +
+  scale_color_manual(values = c('#B3A369', '#003057')) +
+  theme(plot.title = element_text(face = 'bold', size = 16, hjust = .5),
+        axis.text = element_text(face = 'bold'),
+        axis.title = element_text(face = 'bold'),
+        legend.position = 'top') +
+  labs(title = 'Above Median mpg by Origin and Horsepower',
+       x='Origin', y='Horsepower',
+       col='mpg01', fill='mpg01')
+```
+
+Intuitively the weight of a car will have an impact on its fuel efficiency as the more weight that must be moved requires more energy. Here's an area plot to show that heavier cars tend to be less fuel efficient.
+
+```{r}
+dat %>%
+  ggplot(aes(x=weight, col=as.factor(mpg01), fill=as.factor(mpg01))) +
+  geom_area(stat = 'bin', alpha=.6) +
+  theme_light() +
+  scale_fill_manual(values = c('#B3A369', '#003057')) +
+  scale_color_manual(values = c('#B3A369', '#003057')) +
+  theme(plot.title = element_text(face = 'bold', size = 16, hjust = .5),
+        axis.text = element_text(face = 'bold'),
+        axis.title = element_text(face = 'bold'),
+        legend.position = 'top') +
+  labs(title = 'Above Median mpg by Weight',
+       x='Weight', y='Amount',
+       col='mpg01', fill='mpg01')
+```
+
+Now we see some very strong clustering structure, mostly provided by the displacement variable. As displacement increases it becomes much easier to differentiate between above-median and below-median fuel efficiency.
+
+```{r}
+dat %>%
+  ggplot(aes(x=displacement, y=acceleration, col=as.factor(mpg01))) +
+  geom_point(alpha=.6) +
+  #geom_smooth(se=F) +
+  theme_light() +
+  scale_fill_manual(values = c('#B3A369', '#003057')) +
+  scale_color_manual(values = c('#B3A369', '#003057')) +
+  theme(plot.title = element_text(face = 'bold', size = 16, hjust = .5),
+        axis.text = element_text(face = 'bold'),
+        axis.title = element_text(face = 'bold'),
+        legend.position = 'top') +
+  labs(title = 'Above Median mpg by Displacement and Acceleration',
+       x='Displacement', y='Acceleration',
+       col='mpg01', fill='mpg01')
+```
+
+When you combine the clearly impactful weight and horsepower variables the picture is very clear. Higher horsepower and higher weight are exclusively below-median in our dataset.
+
+```{r}
+dat %>%
+  ggplot(aes(x=weight, y=horsepower, col=as.factor(mpg01))) +
+  geom_point(alpha=.6) +
+  #geom_smooth(se=F) +
+  theme_light() +
+  scale_fill_manual(values = c('#B3A369', '#003057')) +
+  scale_color_manual(values = c('#B3A369', '#003057')) +
+  theme(plot.title = element_text(face = 'bold', size = 16, hjust = .5),
+        axis.text = element_text(face = 'bold'),
+        axis.title = element_text(face = 'bold'),
+        legend.position = 'top') +
+  labs(title = 'Above Median mpg by Weight and Horsepower',
+       x='Weight', y='Horsepower',
+       col='mpg01', fill='mpg01')
+```
+
+
+### Methods
+
+To properly analyze this data I split it into a conventional 80-20 split between training and testing sets. The only variable that was removed for this analysis was the year the car was made as it did not show much of an effect on mpg. I'll outline each of the methods used to predict mpg01 below. The caret and MASS packages were used for the implementations of these algorithms. Each of the models below outline their respective process. The code for each can be found in the appendix.
+
+#### Linear Discriminant
+
+I used the MASS function lda() to compute the linear discriminant. Prior to computing the model the data was scaled to ensure the algorithm wouldn't be misled by variables of different scale. The origin variable was not scaled as I considered it a categorical variable. Below you'll find the summary of the model.
+
+```{r}
+library(caret)
+dat <- subset(dat, select = -c(year))
+training.samples <- dat$mpg01 %>%
+  createDataPartition(p = 0.8, list = FALSE)
+
+dat$origin <- as.factor(dat$origin)
+dat$mpg01 <- as.factor(dat$mpg01)
+
+train.data <- dat[training.samples, ]
+test.data <- dat[-training.samples, ]
+
+# this method automatically ignores factor/character vars
+# while considering the scale of the training data
+preproc.param <- train.data %>% 
+  preProcess(method = c("center", "scale"))
+
+train.transformed <- preproc.param %>% predict(train.data)
+test.transformed <- preproc.param %>% predict(test.data)
+
+library(MASS)
+# Fit the model
+lda_model <- lda(mpg01~., data = train.transformed)
+# Make predictions
+lda_predictions <- lda_model %>% predict(test.transformed)
+lda_model
+```
+
+#### Quadratic Discriminant
+
+The quadratic discriminant was also trained on the scaled data use the MASS library's qda() function. The main difference between the LDA and QDA is that QDA does not assume equality of variance/covariance. This makes QDA more flexible to each grouping, which tends to have a more substantive impact on larger training datasets.
+
+```{r}
+qda_model <- qda(mpg01~., data = train.transformed)
+qda_predictions <- qda_model %>% predict(test.transformed)
+qda_model
+```
+
+#### Naive Bayes
+
+The Naive Bayes Classifier is founded on the idea of Bayesian Probaility: $P(A \mid B) = P(A)(P(B \mid A)) / P(B)$. The greatest flaw here is that it assumes the predictors are conditionally independent. Therefore, correlation between variables is not accounted for in the model. In my implementation I ran a 5-fold cross-validation using the caret package's trainControl() function.
+
+Below you can see a confusion matrix of the cross-validated training:
+
+```{r}
+# set up 5-fold cross validation procedure
+train_control <- trainControl(
+  method = "cv", 
+  number = 5
+  )
+
+# train model w/ 5 cv folds
+n_bayes <- train(
+  x = subset(train.data, select = -c(mpg01)),
+  y = train.data$mpg01,
+  method = "nb",
+  trControl = train_control
+  )
+nb_pred <- predict(n_bayes, newdata = test.data)
+caret::confusionMatrix(n_bayes)
+```
+
+#### Logistic Regression
+
+```{r}
+log_model <- glm(mpg01 ~., data = train.data, family = 'binomial')
+log_preds <- predict(log_model, test.data, type = 'response')
+```
+
+The Logisitc Regression was implemented simply using base R's glm() function with the family = 'binomial'. In order to guage the goodness of fit for the model we can look at McFadden's pseudo-$R^{2}$. This model's $R^{2}_{pseudo}$ = `r round(pscl::pR2(log_model)["McFadden"],3)`. The summary of each of the model's coefficients is below:
+
+```{r}
+summary(log_model)
+```
+
+Interestingly, logistic regression only deems horsepower and weight as "significant" below the .1 p-value level. These values are above the standard .05 level. 
+
+#### K-Nearest Neighbor
+
+I used caret's implementation of knn for cross-validation, pre-processing, and tuning. I designed a function to map over five values for k where k = [1, 3, 5, 7, 9]. Each value of k was independently cross-validated and tested on scaled testing data.
+
+```{r}
+num_k <- c(1,3,5,7,9)
+run_knn_test <- function(num_neighbors, train, test){
+  model <- train(
+    mpg01 ~., data = train, method = "knn",
+    trControl = trainControl("cv", number = 5),
+    preProcess = c("center","scale"),
+    tuneLength = 20
+  )
+  
+  knn_preds <- predict(model, test)
+  accuracy <- mean(knn_preds == test$mpg01)
+  return(accuracy)
+}
+```
+
+#### Support Vector Machine
+
+I also chose to build a simpler support vector machine. For the SVM I only used the variables that appeared most predictive, thus far. To me the best predictors appeared to be weight and horsepower given my EDA and the "statistical significance" in the logistic model.
+
+The SVM was built using the svmRadial method (non-linear) using the caret pacakge. This model was also cross validated and scaled.
+
+```{r}
+svm_train <- train.data %>% dplyr::select(weight, horsepower, mpg01)
+svm_model <- train(
+  mpg01 ~., data = train.data, method = "svmRadial",
+  trControl = trainControl("cv", number = 5),
+  preProcess = c("center","scale"),
+  tuneLength = 10
+  )
+svm_preds <- predict(svm_model, test.data)
+```
+
+
+### Results
+
+Here's a table with the accuracy of each model (the calculation for each is in the appendix):
+
+```{r}
+lda_error <- mean(lda_predictions$class==test.transformed$mpg01)
+qda_error <- mean(qda_predictions$class == test.transformed$mpg01)
+nb_error <- mean(nb_pred == test.data$mpg01)
+logistic_error <- mean(round(log_preds) == test.data$mpg01)
+knn_error <- purrr::map(num_k, run_knn_test, train = train.data, test = test.data)
+svm_error <- mean(svm_preds == test.data$mpg01)
+errors <- data.frame(Model = c('LDA', 'QDA', 'Naive Bayes', 'Logistic', 'SVM', 'KNN = 1', 'KNN = 3', 'KNN = 5', 'KNN = 7', 'KNN = 9'))
+errors$Accuracy <- c(lda_error, qda_error, nb_error, logistic_error, svm_error,
+                                    knn_1 = knn_error[[1]], knn_3 = knn_error[[2]], knn_5 = knn_error[[3]],
+                                    knn_7 = knn_error[[4]], knn_9 = knn_error[[5]])
+errors$Accuracy <- round(errors$Accuracy, 3)
+library(gt)
+errors %>%
+  gt() %>%
+  tab_spanner(
+    label = "Accuracy Rates",
+    columns = vars(Model, Accuracy)
+  ) %>%
+  data_color(
+    columns = vars(Accuracy),
+    colors = scales::col_numeric(
+      palette = c('#003057', 'white', '#B3A369'), #'#456885'
+      domain = NULL
+      )
+    )
+```
+
+```{r}
+pred_results <- test.data %>%
+   dplyr::select(weight, horsepower)
+pred_results$mpg01_prediction <- ifelse(test.data$mpg01 == svm_preds, "Correct", "Incorrect")
+svm_plot <- pred_results %>%
+  ggplot(aes(x=weight, y=horsepower, col=as.factor(mpg01_prediction))) +
+  geom_point(alpha=.6) +
+  theme_light() +
+  scale_fill_manual(values = c('#B3A369', '#003057')) +
+  scale_color_manual(values = c('#B3A369', '#003057')) +
+  theme(plot.title = element_text(face = 'bold', size = 16, hjust = .5),
+        axis.text = element_text(face = 'bold'),
+        axis.title = element_text(face = 'bold'),
+        legend.position = 'top',
+        legend.margin=margin(2,2,2,2),
+        legend.box.margin=margin(-10,-10,-10,-10)) +
+  labs(title = 'SVM Predictions',
+       x='Weight', y='Horsepower',
+       col='mpg01', fill='mpg01')
+```
+
+```{r}
+pred_results$mpg01_logistic <-ifelse(round(log_preds) == test.data$mpg01, "Correct", "Incorrect")
+log_plot <- pred_results %>%
+  ggplot(aes(x=weight, y=horsepower, col=as.factor(mpg01_logistic))) +
+  geom_point(alpha=.6) +
+  theme_light() +
+  scale_fill_manual(values = c('#B3A369', '#003057')) +
+  scale_color_manual(values = c('#B3A369', '#003057')) +
+  theme(plot.title = element_text(face = 'bold', size = 16, hjust = .5),
+        axis.text = element_text(face = 'bold'),
+        axis.title = element_text(face = 'bold'),
+        legend.position = 'top',
+        legend.margin=margin(2,2,2,2),
+        legend.box.margin=margin(-10,-10,-10,-10)) +
+  labs(title = 'Logisitc Predictions',
+       x='Weight', y='Horsepower',
+       col='mpg01', fill='mpg01')
+```
+
+```{r}
+pred_results$mpg01_qda <- ifelse(qda_predictions$class == test.data$mpg01, "Correct", "Incorrect")
+qda_plot <- pred_results %>%
+  ggplot(aes(x=weight, y=horsepower, col=as.factor(mpg01_qda))) +
+  geom_point(alpha=.6) +
+  theme_light() +
+  scale_fill_manual(values = c('#B3A369', '#003057')) +
+  scale_color_manual(values = c('#B3A369', '#003057')) +
+  theme(plot.title = element_text(face = 'bold', size = 16, hjust = .5),
+        axis.text = element_text(face = 'bold'),
+        axis.title = element_text(face = 'bold'),
+        legend.position = 'top',
+        legend.margin=margin(2,2,2,2),
+        legend.box.margin=margin(-10,-10,-10,-10)) +
+  labs(title = 'QDA Predictions',
+       x='Weight', y='Horsepower',
+       col='mpg01', fill='mpg01')
+```
+
+```{r}
+pred_results$mpg01_bayes <- ifelse(nb_pred == test.data$mpg01, "Correct", "Incorrect")
+nb_plot <- pred_results %>%
+  ggplot(aes(x=weight, y=horsepower, col=as.factor(mpg01_bayes))) +
+  geom_point(alpha=.6) +
+  theme_light() +
+  scale_fill_manual(values = c('#B3A369', '#003057')) +
+  scale_color_manual(values = c('#B3A369', '#003057')) +
+  theme(plot.title = element_text(face = 'bold', size = 16, hjust = .5),
+        axis.text = element_text(face = 'bold'),
+        axis.title = element_text(face = 'bold'),
+        legend.position = 'top',
+        legend.margin=margin(2,2,2,2),
+        legend.box.margin=margin(-10,-10,-10,-10)) +
+  labs(title = 'Naive Bayes Predictions',
+       x='Weight', y='Horsepower',
+       col='mpg01', fill='mpg01')
+```
+
+To visualize the differences of each model, here are two of the most important variables plotted with the model's correct and incorrect predictions.
+
+```{r}
+gridExtra::grid.arrange(qda_plot, log_plot, nb_plot, svm_plot)
+```
+
+
+### Findings
+
+In order to predict whether or not the mpg of a vehicle is above or below-median the most crucial variables are the vehicle's horsepower and weight. A support vector machine using only these variables generally has as much predictive accuracy as a variety of other models using predictors such as, displacement, acceleration capability, the car's origin, and the number of cylinders. From the model's assigned the algorithm that performed best on this data was the KNN algorithm which correctly 91% of the 78 testing observations correctly. Specifically, k = 3 and k = 5 were the best k-values for this data. The worst performing models were the Naive Bayes and Logisitic Regression.
+
+<img src="`r gt_logo`" width="250" height="230" style = 'position:absolute; top:0; right:0; padding:20px;'>
+<img src="`r gt_crest`" width="200" height="200" style = 'position:absolute; top:0; left:0; padding:20px'>
+
+## Appendix
+
+```{r results="asis" , echo=FALSE}
+cat('
+<style>
+.nav-pills > li {
+float: none;
+display: table-cell;
+text-align: left;
+padding: 0px 2px 0px 2px;
+}
+.nav-pills>li>a{
+position: relative;
+display: block;
+color:white;
+padding: 10px 15px; font-weight: bold;padding: 10px 15px;
+background-color : #003057;
+}
+.nav-pills > li.active > a, .nav-pills > li.active > a:hover, .nav-pills > li.active > a:focus, .nav-pills > li > a:hover {
+color: white;
+border: 2.5px white;
+background-color: #B3A369;padding: 10px 15px;
+font-weight: bold;
+}
+</style>
+')
+```
+
+
+```{r, include=TRUE, eval=FALSE,echo=TRUE}
+library(caret)
+dat <- subset(dat, select = -c(year))
+training.samples <- dat$mpg01 %>%
+  createDataPartition(p = 0.8, list = FALSE)
+
+dat$origin <- as.factor(dat$origin)
+dat$mpg01 <- as.factor(dat$mpg01)
+
+train.data <- dat[training.samples, ]
+test.data <- dat[-training.samples, ]
+
+# this method automatically ignores factor/character vars
+# while considering the scale of the training data
+preproc.param <- train.data %>% 
+  preProcess(method = c("center", "scale"))
+
+train.transformed <- preproc.param %>% predict(train.data)
+test.transformed <- preproc.param %>% predict(test.data)
+
+library(MASS)
+# Fit the model
+lda_model <- lda(mpg01~., data = train.transformed)
+# Make predictions
+lda_predictions <- lda_model %>% predict(test.transformed)
+lda_model
+```
+
+```{r, include=TRUE, eval=FALSE,echo=TRUE}
+qda_model <- qda(mpg01~., data = train.transformed)
+qda_predictions <- qda_model %>% predict(test.transformed)
+qda_model
+```
+
+```{r, include=TRUE, eval=FALSE,echo=TRUE}
+# set up 5-fold cross validation procedure
+train_control <- trainControl(
+  method = "cv", 
+  number = 5
+  )
+
+# train model w/ 5 cv folds
+n_bayes <- train(
+  x = subset(train.data, select = -c(mpg01)),
+  y = train.data$mpg01,
+  method = "nb",
+  trControl = train_control
+  )
+nb_pred <- predict(n_bayes, newdata = test.data)
+caret::confusionMatrix(n_bayes)
+```
+
+```{r, include=TRUE, eval=FALSE,echo=TRUE}
+log_model <- glm(mpg01 ~., data = train.data, family = 'binomial')
+log_preds <- predict(log_model, test.data, type = 'response')
+```
+
+```{r, include=TRUE, eval=FALSE,echo=TRUE}
+num_k <- c(1,3,5,7,9)
+run_knn_test <- function(num_neighbors, train, test){
+  model <- train(
+    mpg01 ~., data = train, method = "knn",
+    trControl = trainControl("cv", number = 5),
+    preProcess = c("center","scale"),
+    tuneLength = 20
+  )
+  
+  knn_preds <- predict(model, test)
+  accuracy <- mean(knn_preds == test$mpg01)
+  return(accuracy)
+}
+```
+
+```{r, include=TRUE, eval=FALSE,echo=TRUE}
+svm_train <- train.data %>% dplyr::select(weight, horsepower, mpg01)
+svm_model <- train(
+  mpg01 ~., data = train.data, method = "svmRadial",
+  trControl = trainControl("cv", number = 5),
+  preProcess = c("center","scale"),
+  tuneLength = 10
+  )
+svm_preds <- predict(svm_model, test.data)
+```
+
+```{r, include=TRUE, eval=FALSE, echo=TRUE}
+lda_error <- mean(lda_predictions$class==test.transformed$mpg01)
+qda_error <- mean(qda_predictions$class == test.transformed$mpg01)
+nb_error <- mean(nb_pred == test.data$mpg01)
+logistic_error <- mean(round(log_preds) == test.data$mpg01)
+knn_error <- purrr::map(num_k, run_knn_test, train = train.data, test = test.data)
+svm_error <- mean(svm_preds == test.data$mpg01)
+```
+
+
+<img src="`r gt_logo`" width="250" height="230" style = 'position:absolute; top:0; right:0; padding:20px;'>
+<img src="`r gt_crest`" width="200" height="200" style = 'position:absolute; top:0; left:0; padding:20px'>
+
