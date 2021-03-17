@@ -1,0 +1,358 @@
+---
+title: "Simulating NFL Games"
+output: html_document
+author: 'Calvin Smith'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r}
+# if (!require("remotes")) install.packages("remotes")
+# remotes::install_github("leesharpe/nflseedR")
+```
+
+## Abstract
+
+Look at all of these words! Wow there are so many of them. Look at all of these words! Wow there are so many of them. Look at all of these words! Wow there are so many of them. Look at all of these words! Wow there are so many of them. Look at all of these words! Wow there are so many of them.
+
+## Introduction
+
+I'll explore outcomes from simulated National Football League (NFL) seasons in this report. As an employee of a professional sports team, I understand the biggest issue within each team's data department; data quantity. In the NFL specifically, the amount of available data is more of an issue as there are just 16 games played in the regular season. In comparison, the NHL and NBA play 82 games and MLB plays 162 games. As in any analysis, a viable sample is critical. There are three main data types that serve different purposes in football analysis. Summary statistics, event data, and GPS data.
+
+Summary statistics are typically what come to mind when thinking about quantifying team and player skill. Yards per passing attempt, touchdowns per game, or any other commonly cited metric falls under this category. These statistics are highly susceptible to manipulation due to small samples. If you only play 16 games you're very likely only looking at summaries from a very short season. These stats only explain what happened, not why or how. Variation in season over season summary statistics is very high, and quite unreliable in most cases. Compounding this issue is when a player does not play many snaps. These stats are only able to offer an aggregate glimpse and do not offer context.
+
+Event data eliminates some of the uncertainty summary statistics carry. Event data goes back to the year 1999, or further if one has access to exclusive data. This data tells what happened at the play-by-play level. For instance, an event data provider will tell you how many yards were gained plays where New England Patriots had Jimmy Football Star and Marcus Speed Demon on the field. Or, all of the results from the Tennessee Titans second play on their third offensive drive. This allows you to know specifically what happened in every play. While this is an improvement from summaries, it still does not explain what transpired within each play.
+
+This brings us to GPS data, also known as tracking data. This data type is commonplace in most sports by now. Tracking technologies allow data scientists to analyze games with an unseen level of granularity. In the NFL, tracking data capture player movements at ten frames per second. This means that all 22 players are located every tenth of a second with attributes like their speed and direction of motion detected. This level of granularity bridges the gap between results (summary statistics and event data) and the process. However, this data is not publicly available and only dates back to 2017. The amount of data is vast, but processing and parsing GPS data is the majority of the battle. Once a team has committed to studying tracking data it's still difficult to model features engineered due to only having three seasons worth of data. 
+
+Simulation can quell our concerns over data volume. Sports are notorious for citing "momentum" and other "unquantifiable" attributes surrounding players, teams, and coaches. Understanding noise in sports data is critical. The truly "best" team does not win the Super Bowl every year. For football statisticians, this phenomenon of the best not winning all the time is often chalked up to random variance. When a bad team beats a good team in the regular season it's called an "off week" for the better team. In the playoffs, this same occurrence is attributed to the inferior team being "hot", or some other arbitrary inference from an even smaller sample size than we're already working with. Hundreds of iterations from a simulation allow us to specifically quantify how likely a team is to win the Super Bowl if they are the best team. Instead of using just one season, we can look at the results of hundreds to help explain the effect of variance on the NFL Playoffs.
+
+
+## Implementation
+
+I used the nflseedR package in R to aid in constructing my simulation. I simulated 1,000 NFL seasons using their base functions to generate an Elo-based model to rank teams throughout the season. This package runs on the back of nflfastR, which provides access to event data dating back to 1999. This allows one to customize their simulations with variables tracing back to before Y2K. For comparisons to any observed results, I scraped data from profootballreference.com. I scraped this website dating back to 2000 using Python.
+
+```{r}
+library(nflseedR)
+suppressMessages(suppressWarnings(library(tidyverse, warn.conflicts = FALSE)))
+library(ggthemes)
+options(digits = 5)
+gt_logo <- 'https://upload.wikimedia.org/wikipedia/commons/c/c6/Georgia_Tech_logo.svg'
+gt_crest <- 'https://upload.wikimedia.org/wikipedia/commons/6/6c/Georgia_Tech_seal.svg'
+```
+
+```{r}
+theme_calvin <- function(){
+  theme(text = element_text(family = 'Tahoma'),
+        axis.title = element_text(face = 'bold', size=11),
+        plot.title = element_text(face = 'bold', hjust = .5, size = 16),
+        legend.position = 'none',
+        plot.subtitle = element_text(hjust = .5, size = 12))
+}
+gt_palette <- c('#B3A369', '#003057', '#545454', '#A28D5B', '#B3A369', '#003057', '#545454', '#A28D5B')
+```
+
+```{r}
+set.seed(4)
+sims <- simulate_nfl(
+  nfl_season = 2020,
+  fresh_season = TRUE,
+  simulations = 1000
+)
+# sims <- simulate_nfl(
+#   nfl_season = 2020,
+#   fresh_season = TRUE,
+#   simulations = 1
+# )
+```
+
+```{r}
+each_tm <- sims$teams
+```
+
+## Simulation Results
+
+<div class="row">
+<div class="column50pct">
+
+```{r}
+each_tm %>%
+  ggplot(aes(x=wins, color=as.factor(div_rank), fill=as.factor(div_rank))) + 
+  geom_histogram(binwidth = 1, alpha=.7) +
+  scale_color_manual(values = gt_palette) +
+  scale_fill_manual(values = gt_palette) +
+  theme_minimal() + theme_calvin() +
+  theme(legend.position = 'top',
+        text = element_text(colour = '#545454')) +
+  labs(title = 'Win Totals by Division Rank', x='Wins', col='Div. Rank', fill='Div. Rank')
+```
+
+```{r}
+mean_wins <- mean(each_tm$wins)
+sd_wins <- round(sd(each_tm$wins),2)
+```
+
+
+</div>
+<div class="column50pct">
+<div class="notes">
+<b><u>Win Distribution</u></b><br>
+
+To left you can observe my simulation's distribution of wins colored by a team's ranking in their division. This forms a normal curve with team who win more games winning their division more often. The mean wins equals `r mean_wins`, and the standard deviation is `r sd_wins`. The mean being centered at `r mean_wins` is logical as you'd expect average to be very close to 8 given an everage team would win ~50% of their 16 game season.
+
+</div>
+</div>
+</div>
+
+```{r}
+actual_ws <- read.csv('/Users/Calvin/Downloads/wins.csv')
+actual_mean <- mean(actual_ws$W)
+actual_sd <- round(sd(actual_ws$W),2)
+```
+
+
+<div class="column50pct">
+<div class="notes">
+<b><u>Reality Check</u></b><br>
+
+I scraped the last 20 season of data in order to assess the accuracy of this distribution. The observed distribution of wins is quite similar to the results of our simulation. This validates the simulation conducted as at least partially able to mirror real-life outcomes. The mean of the observed data is `r actual_mean` with a standard deviation of `r actual_sd`. This validates are methods for the regular season, but wins in the postseason are not counted. Playoff wins affect a team's positioning in the NFL Draft where teams who go further in the playoffs select with a higher pick.
+
+</div>
+</div>
+
+<div class="row">
+<div class="column50pct">
+
+```{r}
+actual_ws %>%
+  ggplot(aes(x=W)) +
+  geom_histogram(binwidth = 1, alpha=.7, col=gt_palette[1], fill=gt_palette[1]) +
+  scale_color_manual(values = gt_palette) +
+  scale_fill_manual(values = gt_palette) +
+  theme_minimal() + theme_calvin() +
+  theme(legend.position = 'top',
+        text = element_text(color = '#545454')) +
+  labs(title = 'Win Totals Since 2000', x='Wins', col='Div. Rank', fill='Div. Rank')
+```
+
+</div>
+</div>
+
+```{r}
+seed_summary <- each_tm %>%
+  group_by(seed) %>%
+  summarise(avg_finish = round(mean(draft_order),2))
+colnames(seed_summary) <- c('Playoff Seed', 'Avg. Draft Position')
+seed_summary <- na.omit(seed_summary)
+seed_v_finish_lm <- lm(draft_order ~ as.factor(seed), data = each_tm)
+```
+
+
+<div class="row">
+<div class="column50pct">
+
+```{r}
+na.omit(each_tm) %>%
+  ggplot(aes(x=as.factor(seed), y=as.factor(draft_order), col=as.factor(seed))) +
+  geom_jitter(alpha=.3) +
+  theme_minimal() + theme_calvin() +
+  scale_color_manual(values = gt_palette) +
+  theme(text = element_text(color = '#545454')) +
+  labs(x='Playoff Seed', y='Draft Order',
+       title = "How predictive is a team's playoff seeding?")
+```
+
+</div>
+<div class="column50pct">
+<div class="notes">
+<b><u>Playoff Seeding and Draft Order</u></b><br>
+
+This plot displays the density of each playoff seed's finish in the NFL Draft Order. A Draft Order of 32 means that team won the Super Bowl, and a 31 means that team lost in the Super Bowl. Therefore, you'd expect to see a higher density of teams with a better playoff seed with a higher draft order. The plot affirms this assumption and it's borne out quantitatively. You can look at the table below to see precise averages for each playoff seeding.
+
+</div>
+</div>
+</div>
+
+<center>
+
+```{r}
+library(reactable)
+library(htmltools)
+#library(crosstalk)
+bar_chart <- function(label, width="100%", height="16px", fill=gt_palette[2], background="e1e1e1"){
+  bar <- div(style = list(background=fill, width=width, height=height))
+  chart <- div(style = list(flexGrow=1, marginLeft="8px", background=background), bar)
+  div(style = list(display="flex", alignItems="center"), label, chart)
+}
+reactable(seed_summary, outlined = FALSE, striped = FALSE, highlight = TRUE, searchable = FALSE,
+          compact = FALSE, filterable = FALSE, showSortable = TRUE,
+          theme = reactableTheme(style = list(fontFamily = 'Tahoma')),
+          columns = list(
+            `Avg. Draft Position` = colDef(align = "left", cell = function(value) {
+              width <- (value/10)^4
+              bar_chart(value, width = width)
+  })
+))
+```
+
+</center>
+
+<br>
+
+Below I've visualzed two similar plots that show the expected draft position based on where a team finishes in their division. Again, the relationship between division finish follows natural intuition. Teams who win their division tend to draft later, meaning they went deeper into the playoffs. However, these plots better show the possible range of outcomes. Here we see division winners can pick in the low 20's meaning they lost in the first round of the playoffs. This falls within one standard deviation of the mean making this a fairly common outcome.
+
+<div class="row">
+<div class="column50pct">
+
+```{r}
+each_tm %>%
+  ggplot(aes(x=as.factor(div_rank), y=draft_order, col=as.factor(div_rank))) +
+  geom_boxplot() +
+  geom_jitter(alpha=.02) +
+  geom_smooth() +
+  theme_minimal() + theme_calvin() +
+  scale_color_manual(values = gt_palette) +
+  scale_fill_manual(values = gt_palette) +
+  theme(text = element_text(color = '#545454')) +
+  labs(x='Division Finish', y='Draft Order',
+       title = "How predictive is a team's division finish?")
+```
+
+</div>
+
+<div class="column50pct">
+
+```{r}
+dumbbell_plt <- each_tm %>%
+  group_by(div_rank) %>%
+  summarise(`Avg. Draft Order` = mean(draft_order),
+            sd_draft_order = sd(draft_order)) %>%
+  mutate(`Low Draft Range` = `Avg. Draft Order` - sd_draft_order,
+         `High Draft Range` = `Avg. Draft Order` + sd_draft_order) %>%
+  reshape2::melt(id.vars = c('div_rank', 'sd_draft_order')) %>%
+  mutate(variable = ifelse(variable == 'Low Draft Range' | variable == 'High Draft Range', 'Draft Range', variable))
+dumbbell_plt %>%
+  ggplot(aes(x = value, y = as.factor(reorder(div_rank, -div_rank)), color = as.factor(div_rank), shape=variable)) +
+  geom_line(aes(group = div_rank, col=as.factor(div_rank)), size = 2, alpha=.5) +
+  geom_point(size = 8) +
+  theme_minimal() + theme_calvin() +
+  theme(text = element_text(color = '#545454')) +
+  labs(title = 'Draft Position Range by Division Finish', x='Draft Position', y='Division Finish',
+       subtitle = 'Triangles Indicate Ranges Centered Around the Mean') +
+  scale_color_manual(values = gt_palette)
+```
+
+</div>
+</div>
+
+## Main Findings
+
+All of the plots above visually showcase variance in the outcome of NFL seasons. The best teams tend to win more games and win more games in the playoffs, but this is not always the case. Using a winner-take-all playoff system heavily introduces randomness into deciding who the best team is. Anything can happen when your season can end with just one loss. After all, a football team who won 15 games in the regular season still lost 1. Does that mean the one team they lost to was superior? Or, does it show they were better for that one week? After all, a team who has a 95% chance to win still loses 5% of the time.
+
+```{r}
+one_sb <- round(sum(each_tm$seed == 1 & each_tm$draft_order == 32) / 1000,3) * 100
+
+pct_sb_all <- each_tm %>%
+  filter(draft_order == 32) %>%
+  group_by(seed) %>%
+  summarise(pct = (n() / 1000)*100)
+colnames(pct_sb_all) <- c('Playoff Seed', '% of Times Winning Super Bowl')
+```
+
+In my simulations we found that a team who went into the playoffs ranked as a 1 seed, meaning they were the best team in their conference in the regular season, won the Super Bowl `r one_sb`% of the time. The table below displays the percentage of times each playoff seed won the Super Bowl.
+
+```{r}
+reactable(pct_sb_all, outlined = FALSE, striped = FALSE, highlight = TRUE, searchable = FALSE,
+          compact = FALSE, filterable = FALSE, showSortable = TRUE,
+          theme = reactableTheme(style = list(fontFamily = 'Tahoma')),
+          columns = list(
+            `% of Times Winning Super Bowl` = colDef(align = "left", cell = function(value) {
+              width <- value*3
+              bar_chart(value, width = width)
+  })
+))
+```
+
+```{r}
+top_3 <- 100 - sum(pct_sb_all$`% of Times Winning Super Bowl`[1:3])
+```
+
+
+Being the best team in your conference in the regular season doesn't even guarantee a 50-50 shot at winning a title. While you're the most likely candidate, it is you versus six other seeds. It is more likely that a team other than the best, despite being at the top after 16 weeks of the regular season, will end their season with a win. In `r top_3`% of my simulations a team who was not a top three seed won the Super Bowl. Going beyond the team who earned the highest seed and including two more top teams still returns fairly good odds for a team outside the top three to win it all. This is particularly important in peeling back the curtain of variance in sports.
+
+## Conclusions
+
+The strength of random chance is very strong, and many times inexplicable. This doesn't mean we should chalk odd occurences up to nothing, but many times that's just how the cookie crumbles. In this simulation I've demonstrated that football games do not occur in a vaccum. Any team can win on any given week, or thorughout a string of weeks. While the odds may be low of this happening, it still occurs. There is no variable for "momentum" in this simulation, yet the lowest ranked team still wins the Super Bowl a few times. This is often described as a team "getting hot", but in reality it likely has much less to do with an anecdotal factor and more to do with favorable matchups, injuries, and unpredictably random events.
+
+
+```{r results="asis" , echo=FALSE}
+cat('
+<style>
+.nav-pills > li {
+float: none;
+display: table-cell;
+text-align: left;
+padding: 0px 2px 0px 2px;
+}
+.nav-pills>li>a{
+position: relative;
+display: block;
+color:white;
+padding: 10px 15px; font-weight: bold;padding: 10px 15px;
+background-color : #f5804e;
+}
+.nav-pills > li.active > a, .nav-pills > li.active > a:hover, .nav-pills > li.active > a:focus, .nav-pills > li > a:hover {
+color: white;
+border: 2.5px white;
+background-color: #2da0a8;padding: 10px 15px;
+font-weight: bold;
+}
+body {
+  background-color: #ffffff;
+}
+* {
+  box-sizing: border-box;
+}
+.column50pct {
+	float: left;
+	width: 50%;
+	padding: 0px 0px 0px 0px;
+}
+.notes {
+ 	padding: 15px 20px 10px 20px;
+background-color: #ffffff;	border: 1px solid black;
+height: 70%;
+width: 90%
+}
+.row::after {
+  content: "";
+  clear: both;
+  display: table;
+}
+pre {
+	display: none;
+	padding: 10px;
+	margin: 0 0 10.5px;
+	font-size: 14px;
+	line-height: 1.4;
+	word-break: break-all;
+	word-wrap: break-word;
+	color: #333333;
+	background-color: #f5f5f5;
+	border: 1px solid #cccccc;
+	border-radius: 0;
+}
+</style>
+')
+# .nav-pills {
+# display: table;
+# width: 100%;
+# }
+```
+
+<img src="`r gt_logo`" width="250" height="230" style = 'position:absolute; top:0; right:0; padding:20px;'>
+<img src="`r gt_crest`" width="200" height="200" style = 'position:absolute; top:0; left:0; padding:20px'>
