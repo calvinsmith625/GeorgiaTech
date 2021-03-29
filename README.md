@@ -12,4 +12,4 @@ hw2:
 
 **simulation_project:** project with standard project formatting with slight variations in col50pct w/ multiple plots in a single row and slight variations in foramtting that may useful
 
-**hw6_rf_gb:** solid implementation of multiple models with parameter tuning
+**hw6_rf_gb:** solid implementation of multiple models with parameter tuning, Kaggle API access in Colab
